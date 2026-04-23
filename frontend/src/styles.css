@@ -1,0 +1,51 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+* {
+  transition-property: background-color, border-color, color;
+  transition-duration: 160ms;
+  transition-timing-function: ease;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: "Manrope", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+.metric-flash-up {
+  animation: metricUp 380ms ease-out;
+}
+
+.metric-flash-down {
+  animation: metricDown 380ms ease-out;
+}
+
+@keyframes metricUp {
+  0% {
+    color: #86efac;
+    transform: translateY(-1px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes metricDown {
+  0% {
+    color: #fda4af;
+    transform: translateY(1px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
