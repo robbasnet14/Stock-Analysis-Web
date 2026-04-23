@@ -196,7 +196,7 @@ class MarketDataService:
             )
         return out
 
-    async def get_bars(self, symbol: str, span: str, tf: str | None = None) -> dict[str, Any]:
+    async def get_bars(self, symbol: str, span: str, tf: str | None = None, max_points: int | None = None) -> dict[str, Any]:
         sym = (symbol or "").upper().strip()
         range_key = (span or "1D").upper()
         cfg = RANGE_CONFIG.get(range_key)
@@ -251,7 +251,7 @@ class MarketDataService:
                 self.router.record_failure(provider.name, str(exc), cooldown_s=cooldown)
                 errors.append(f"{provider.name}: {exc}")
 
-        bars = self._downsample_bars(bars, int(cfg["max_points"]))
+        bars = self._downsample_bars(bars, int(max_points if max_points is not None else cfg["max_points"]))
         logger.info(
             "bars request: ticker=%s tf=%s range=%s start=%s end=%s provider=%s count=%s source=%s errors=%s",
             sym,

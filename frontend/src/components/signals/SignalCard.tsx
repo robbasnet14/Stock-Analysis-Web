@@ -1,23 +1,24 @@
+import { Link } from "react-router-dom";
+
 type SignalCardProps = {
   ticker: string;
   signal: "Bullish" | "Bearish" | "Neutral" | string;
   score: number;
   explanation: string;
   triggeredRules?: string[];
+  to?: string;
+  onOpen?: () => void;
 };
 
-export function SignalCard({ ticker, signal, score, explanation, triggeredRules }: SignalCardProps) {
+export function SignalCard({ ticker, signal, score, explanation, triggeredRules, to, onOpen }: SignalCardProps) {
   const tone =
     signal.toLowerCase() === "bullish"
       ? "bg-emerald-500/20 text-emerald-500 dark:text-emerald-300"
       : signal.toLowerCase() === "bearish"
         ? "bg-rose-500/20 text-rose-500 dark:text-rose-300"
         : "bg-slate-400/20 text-slate-500 dark:text-slate-300";
-  return (
-    <article
-      title={explanation}
-      className="rounded-xl border border-slate-300 bg-white/80 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
-    >
+  const content = (
+    <article title={explanation} className="rounded-xl border border-slate-300 bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/70">
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold">{ticker}</h3>
         <span className={`rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>
@@ -30,5 +31,15 @@ export function SignalCard({ ticker, signal, score, explanation, triggeredRules 
       ) : null}
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{explanation}</p>
     </article>
+  );
+
+  if (!to) {
+    return content;
+  }
+
+  return (
+    <Link to={to} onClick={onOpen} className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
+      {content}
+    </Link>
   );
 }

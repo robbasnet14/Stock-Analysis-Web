@@ -28,3 +28,10 @@ Index(
     SignalSnapshot.track,
     SignalSnapshot.computed_at.desc(),
 )
+Index(
+    "idx_signals_ticker_horizon_ts",
+    SignalSnapshot.ticker,
+    SignalSnapshot.horizon,
+    SignalSnapshot.track,
+    SignalSnapshot.computed_at.desc(),
+)

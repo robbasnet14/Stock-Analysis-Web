@@ -30,4 +30,5 @@ class NewsArticle(Base):
 Index("idx_news_ticker_published", NewsArticle.ticker, NewsArticle.published_at.desc())
 Index("idx_news_ticker_dedupe", NewsArticle.ticker, NewsArticle.dedupe_key)
 Index("idx_news_articles_published_at_desc", NewsArticle.published_at.desc())
+Index("idx_news_published", NewsArticle.published_at.desc())
 Index("idx_news_articles_title_hash", NewsArticle.title_hash)

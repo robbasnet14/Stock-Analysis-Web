@@ -24,6 +24,8 @@ class HoldingsLot(Base):
 
 
 Index("idx_holdings_lots_user_ticker_status", HoldingsLot.user_id, HoldingsLot.ticker, HoldingsLot.status)
+Index("idx_holdings_lots_user_status", HoldingsLot.user_id, HoldingsLot.status)
+Index("idx_holdings_lots_user_ticker", HoldingsLot.user_id, HoldingsLot.ticker)
 
 
 class RealizedTrade(Base):

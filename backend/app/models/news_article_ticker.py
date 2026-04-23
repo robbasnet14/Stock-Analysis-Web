@@ -11,3 +11,4 @@ class NewsArticleTicker(Base):
 
 
 Index("idx_news_article_tickers_ticker", NewsArticleTicker.ticker)
+Index("idx_news_ticker", NewsArticleTicker.ticker, NewsArticleTicker.article_id)

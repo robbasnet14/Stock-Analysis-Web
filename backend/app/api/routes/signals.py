@@ -8,6 +8,7 @@ from app.dependencies import get_optional_user
 from app.models.holdings_lot import HoldingsLot
 from app.models.watchlist import Watchlist
 from app.models.user import User
+from app.services.signals.detail import build_signal_detail
 from app.services.signals.ensemble import compute_ensemble
 from app.services.signals.technical import compute_technical
 from app.state import state
@@ -115,4 +116,20 @@ async def ensemble_signal(
         redis_client=state.redis,
         ticker=ticker,
         horizon=horizon,
+    )
+
+
+@router.get("/detail/{ticker}")
+async def signal_detail(
+    ticker: str,
+    horizon: str = "short",
+    db: AsyncSession = Depends(get_db),
+    _: User | None = Depends(get_optional_user),
+) -> dict:
+    return await build_signal_detail(
+        db=db,
+        ticker=ticker,
+        horizon=horizon,
+        market_data=state.market_data,
+        redis_client=state.redis,
     )

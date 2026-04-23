@@ -1,5 +1,10 @@
 import { SignalCard } from "./SignalCard";
 
+type DetailNav = {
+  hrefForTicker?: (ticker: string) => string;
+  onOpenTicker?: (ticker: string) => void;
+};
+
 type EnsembleRow = {
   ticker: string;
   score: number;
@@ -12,7 +17,7 @@ function pct(v: number) {
   return `${Math.max(0, Math.min(100, v * 100)).toFixed(1)}%`;
 }
 
-export function EnsembleTrack({ items }: { items: EnsembleRow[] }) {
+export function EnsembleTrack({ items, hrefForTicker, onOpenTicker }: { items: EnsembleRow[] } & DetailNav) {
   if (!items.length) {
     return <p className="text-sm text-slate-500 dark:text-slate-400">No ensemble ranking data yet.</p>;
   }
@@ -36,6 +41,8 @@ export function EnsembleTrack({ items }: { items: EnsembleRow[] }) {
               signal={row.score > 0.2 ? "Bullish" : row.score < -0.2 ? "Bearish" : "Neutral"}
               score={scorePct}
               explanation={`${row.narrative || `Final ${pct(row.score)} · Confidence ${pct(row.confidence ?? 0.5)}`}${contributionSummary ? ` | ${contributionSummary}` : ""}`}
+              to={hrefForTicker ? hrefForTicker(row.ticker) : undefined}
+              onOpen={onOpenTicker ? () => onOpenTicker(row.ticker) : undefined}
             />
           </div>
         );

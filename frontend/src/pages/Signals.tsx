@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { TickerSearch } from "../components/portfolio/TickerSearch";
 import { EnsembleTrack, EnsembleRow } from "../components/signals/EnsembleTrack";
 import { TechnicalTrack, TechnicalRow } from "../components/signals/TechnicalTrack";
@@ -7,10 +8,18 @@ import { usePortfolioStore } from "../store/portfolio";
 
 const HORIZONS = ["short", "mid", "long"] as const;
 const FALLBACK_TICKERS = ["AAPL", "BTC-USD", "ETH-USD"];
+const SIGNALS_SCROLL_KEY = "signals:return";
 
 export default function Signals() {
-  const [tab, setTab] = useState<"technical" | "ensemble">("technical");
-  const [horizon, setHorizon] = useState<(typeof HORIZONS)[number]>("short");
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTrack = searchParams.get("track") === "ensemble" ? "ensemble" : "technical";
+  const initialHorizon = HORIZONS.includes((searchParams.get("horizon") as (typeof HORIZONS)[number]) ?? "short")
+    ? ((searchParams.get("horizon") as (typeof HORIZONS)[number]) ?? "short")
+    : "short";
+
+  const [tab, setTab] = useState<"technical" | "ensemble">(initialTrack);
+  const [horizon, setHorizon] = useState<(typeof HORIZONS)[number]>(initialHorizon);
   const [technicalRows, setTechnicalRows] = useState<TechnicalRow[]>([]);
   const [ensembleRows, setEnsembleRows] = useState<EnsembleRow[]>([]);
 
@@ -18,6 +27,29 @@ export default function Signals() {
   const setSignalTickers = usePortfolioStore((s) => s.setSignalTickers);
   const addSignalTicker = usePortfolioStore((s) => s.addSignalTicker);
   const removeSignalTicker = usePortfolioStore((s) => s.removeSignalTicker);
+
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    next.set("track", tab);
+    next.set("horizon", horizon);
+    setSearchParams(next, { replace: true });
+  }, [horizon, searchParams, setSearchParams, tab]);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem(SIGNALS_SCROLL_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as { scrollY?: number; track?: "technical" | "ensemble"; horizon?: (typeof HORIZONS)[number] };
+      if (parsed.track) setTab(parsed.track);
+      if (parsed.horizon && HORIZONS.includes(parsed.horizon)) setHorizon(parsed.horizon);
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: Number(parsed.scrollY) || 0, behavior: "auto" });
+      });
+    } catch {
+      // Ignore corrupted state.
+    }
+    sessionStorage.removeItem(SIGNALS_SCROLL_KEY);
+  }, [location.key]);
 
   useEffect(() => {
     let mounted = true;
@@ -73,6 +105,17 @@ export default function Signals() {
   }, [horizon, signalTickers, tab]);
 
   const chips = useMemo(() => signalTickers, [signalTickers]);
+  const hrefForTicker = (ticker: string) => `/signals/${encodeURIComponent(ticker)}?horizon=${encodeURIComponent(horizon)}`;
+  const handleOpenTicker = (_ticker: string) => {
+    sessionStorage.setItem(
+      SIGNALS_SCROLL_KEY,
+      JSON.stringify({
+        scrollY: window.scrollY,
+        track: tab,
+        horizon
+      })
+    );
+  };
 
   return (
     <section className="space-y-4">
@@ -131,7 +174,11 @@ export default function Signals() {
         </div>
       </header>
 
-      {tab === "technical" ? <TechnicalTrack items={technicalRows} /> : <EnsembleTrack items={ensembleRows} />}
+      {tab === "technical" ? (
+        <TechnicalTrack items={technicalRows} hrefForTicker={hrefForTicker} onOpenTicker={handleOpenTicker} />
+      ) : (
+        <EnsembleTrack items={ensembleRows} hrefForTicker={hrefForTicker} onOpenTicker={handleOpenTicker} />
+      )}
     </section>
   );
 }

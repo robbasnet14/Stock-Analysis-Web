@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { clearTokens, getAccessToken, getRefreshToken, isAuthenticated, setTokens } from "./auth";
-import { AdminUser, BrokerAccountSummary, BullCaseItem, CacheHealthResponse, LiveDataStatus, MarketPulse, MarketSessionStatus, NewsArticle, PaperOrder, Position, Prediction, PricePoint, ProviderStatusResponse, StockTick, TrendingItem, UserProfile, WatchlistIntelItem } from "../types";
+import { AdminUser, BrokerAccountSummary, BullCaseItem, CacheHealthResponse, LiveDataStatus, MarketPulse, MarketSessionStatus, NewsArticle, PaperOrder, Position, Prediction, PricePoint, ProviderStatusResponse, SignalDetailResponse, StockTick, TrendingItem, UserProfile, WatchlistIntelItem } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
@@ -357,6 +357,11 @@ export async function getSignalBatch(
 
 export async function getTechnicalSnapshot(ticker: string): Promise<{ ticker: string; rsi: number; macd: number; signal_line: number; sma_20: number; sma_50: number }> {
   const { data } = await api.get<{ ticker: string; rsi: number; macd: number; signal_line: number; sma_20: number; sma_50: number }>(`/api/stocks/${encodeURIComponent(ticker)}/technical`);
+  return data;
+}
+
+export async function getSignalDetail(ticker: string, horizon: "short" | "mid" | "long" = "short"): Promise<SignalDetailResponse> {
+  const { data } = await api.get<SignalDetailResponse>(`/api/signals/detail/${encodeURIComponent(ticker)}?horizon=${encodeURIComponent(horizon)}`);
   return data;
 }
 

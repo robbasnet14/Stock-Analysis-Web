@@ -19,3 +19,4 @@ class PriceBar(Base):
 
 
 Index("idx_price_bars_ticker_tf_ts_desc", PriceBar.ticker, PriceBar.tf, PriceBar.ts.desc())
+Index("idx_price_bars_ticker_tf_ts", PriceBar.ticker, PriceBar.tf, PriceBar.ts.desc())

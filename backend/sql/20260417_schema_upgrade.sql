@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS holdings_lots (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_ticker_status ON holdings_lots(user_id, ticker, status);
+CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_status ON holdings_lots(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_ticker ON holdings_lots(user_id, ticker);
 
 CREATE TABLE IF NOT EXISTS realized_trades (
   id BIGSERIAL PRIMARY KEY,
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS price_bars (
   PRIMARY KEY (ticker, tf, ts)
 );
 CREATE INDEX IF NOT EXISTS idx_price_bars_ticker_tf_ts_desc ON price_bars(ticker, tf, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_price_bars_ticker_tf_ts ON price_bars(ticker, tf, ts DESC);
 
 ALTER TABLE stock_prices ADD COLUMN IF NOT EXISTS interval VARCHAR(16) DEFAULT 'raw';
 ALTER TABLE stock_prices ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'unknown';
@@ -55,6 +58,7 @@ ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS sentiment_model VARCHAR(24) D
 ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMP DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_news_articles_published_at_desc ON news_articles(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_published ON news_articles(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_news_articles_title_hash ON news_articles(title_hash);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_news_articles_url_hash_non_empty ON news_articles(url_hash) WHERE url_hash <> '';
 
@@ -64,6 +68,7 @@ CREATE TABLE IF NOT EXISTS news_article_tickers (
   PRIMARY KEY (article_id, ticker)
 );
 CREATE INDEX IF NOT EXISTS idx_news_article_tickers_ticker ON news_article_tickers(ticker);
+CREATE INDEX IF NOT EXISTS idx_news_ticker ON news_article_tickers(ticker, article_id);
 
 CREATE TABLE IF NOT EXISTS signal_snapshots (
   id BIGSERIAL PRIMARY KEY,
@@ -77,4 +82,6 @@ CREATE TABLE IF NOT EXISTS signal_snapshots (
   computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_signal_snapshots_ticker_horizon_track_computed_desc
+  ON signal_snapshots(ticker, horizon, track, computed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_ticker_horizon_ts
   ON signal_snapshots(ticker, horizon, track, computed_at DESC);

@@ -67,13 +67,24 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS sentiment_model VARCHAR(24) DEFAULT ''"))
         await conn.execute(text("ALTER TABLE news_articles ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMP DEFAULT now()"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_ticker_status ON holdings_lots (user_id, ticker, status)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_status ON holdings_lots (user_id, status)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_holdings_lots_user_ticker ON holdings_lots (user_id, ticker)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_price_bars_ticker_tf_ts_desc ON price_bars (ticker, tf, ts DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_price_bars_ticker_tf_ts ON price_bars (ticker, tf, ts DESC)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_articles_published_at_desc ON news_articles (published_at DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_published ON news_articles (published_at DESC)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_articles_title_hash ON news_articles (title_hash)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_article_tickers_ticker ON news_article_tickers (ticker)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_news_ticker ON news_article_tickers (ticker, article_id)"))
         await conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS idx_signal_snapshots_ticker_horizon_track_computed_desc "
+                "ON signal_snapshots (ticker, horizon, track, computed_at DESC)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_signals_ticker_horizon_ts "
                 "ON signal_snapshots (ticker, horizon, track, computed_at DESC)"
             )
         )

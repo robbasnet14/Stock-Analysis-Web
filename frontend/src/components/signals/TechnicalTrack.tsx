@@ -1,5 +1,10 @@
 import { SignalCard } from "./SignalCard";
 
+type DetailNav = {
+  hrefForTicker?: (ticker: string) => string;
+  onOpenTicker?: (ticker: string) => void;
+};
+
 type TechnicalRow = {
   ticker: string;
   score: number;
@@ -17,7 +22,7 @@ type TechnicalRow = {
   }>;
 };
 
-export function TechnicalTrack({ items }: { items: TechnicalRow[] }) {
+export function TechnicalTrack({ items, hrefForTicker, onOpenTicker }: { items: TechnicalRow[] } & DetailNav) {
   if (!items.length) {
     return <p className="text-sm text-slate-500 dark:text-slate-400">No technical snapshots available yet.</p>;
   }
@@ -42,6 +47,8 @@ export function TechnicalTrack({ items }: { items: TechnicalRow[] }) {
             score={score}
             triggeredRules={top}
             explanation={prefix}
+            to={hrefForTicker ? hrefForTicker(row.ticker) : undefined}
+            onOpen={onOpenTicker ? () => onOpenTicker(row.ticker) : undefined}
           />
         );
       })}

@@ -7,6 +7,7 @@ import Navbar from "./components/Navbar";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const News = lazy(() => import("./pages/News"));
 const Signals = lazy(() => import("./pages/Signals"));
+const SignalDetail = lazy(() => import("./pages/SignalDetail"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Account = lazy(() => import("./pages/Account"));
 
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/news" element={<News />} />
             <Route path="/signals" element={<Signals />} />
+            <Route path="/signals/:ticker" element={<SignalDetail />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/account" element={<Account />} />
             <Route path="/admin" element={<Navigate to="/account" replace />} />

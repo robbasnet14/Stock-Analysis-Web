@@ -171,3 +171,80 @@ export interface CacheHealthResponse {
   db_keys?: number;
   error?: string;
 }
+
+export interface SignalRule {
+  rule: string;
+  value: number;
+  vote: number;
+  weight: number;
+  fired: boolean;
+  explanation: string;
+}
+
+export interface SignalVerdict {
+  label: "BULLISH" | "BEARISH" | "NEUTRAL" | string;
+  score: number;
+  confidence: number;
+  track: "technical" | "ensemble" | string;
+}
+
+export interface SignalDetailResponse {
+  ticker: string;
+  company_name: string;
+  asset_class: string;
+  quote: {
+    price: number;
+    change: number;
+    change_percent: number;
+  };
+  horizon: "short" | "mid" | "long" | string;
+  verdict: SignalVerdict;
+  triggered_rules: SignalRule[];
+  projection: {
+    median_return_pct: number | null;
+    bullish_case_pct: number | null;
+    bearish_case_pct: number | null;
+    projected_price_median: number | null;
+    projected_price_bull: number | null;
+    projected_price_bear: number | null;
+    accuracy_pct: number;
+    sample_size: number;
+    backtest_start: string | null;
+    backtest_end: string | null;
+  };
+  news: {
+    sentiment_score: number;
+    article_count_24h: number;
+    top_articles: Array<{
+      title: string;
+      source: string;
+      published_at: string;
+      sentiment: string;
+      url: string;
+    }>;
+  };
+  levels: {
+    current: number;
+    support: number;
+    resistance: number;
+    suggested_stop: number;
+    suggested_take_profit: number;
+    risk_reward_ratio: number;
+  };
+  mini_chart_bars: Array<{
+    timestamp: string;
+    close: number;
+  }>;
+  signals: {
+    technical: {
+      verdict: SignalVerdict;
+      triggered_rules: SignalRule[];
+      explanation: string;
+    };
+    ensemble: {
+      verdict: SignalVerdict;
+      triggered_rules: SignalRule[];
+      explanation: string;
+    };
+  };
+}
