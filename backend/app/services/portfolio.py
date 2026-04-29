@@ -74,6 +74,13 @@ def _bar_timestamp(bar: dict[str, Any]) -> pd.Timestamp | None:
     return ts
 
 
+def _is_us_market_open(dt: datetime) -> bool:
+    utc = _as_utc(dt) or datetime.now(timezone.utc)
+    minutes = utc.hour * 60 + utc.minute
+    # Broad UTC window that covers regular US market hours across DST.
+    return utc.weekday() < 5 and (13 * 60 + 30) <= minutes <= (21 * 60)
+
+
 async def _latest_live_price(redis_client, ticker: str, fallback: float) -> float:
     symbol = ticker.upper()
     if redis_client is None:
@@ -208,6 +215,9 @@ async def compute_portfolio_timeseries(
     value_series = (shares_df * price_df).sum(axis=1)
 
     if config["anchor"] == "intraday":
+        last_hist_ts = value_series.index[-1]
+        now_ts = pd.Timestamp(now)
+        gap_minutes = max(0.0, (now_ts - last_hist_ts).total_seconds() / 60.0)
         live_total = 0.0
         for ticker in unique_tickers:
             if ticker not in shares_df.columns or ticker not in price_df.columns:
@@ -219,7 +229,26 @@ async def compute_portfolio_timeseries(
             live_price = await _latest_live_price(redis_client, ticker, fallback)
             live_total += shares_now * live_price
         if live_total > 0:
-            value_series.loc[pd.Timestamp(now)] = live_total
+            if gap_minutes < 5:
+                value_series.loc[now_ts] = live_total
+            elif gap_minutes < 60:
+                n_bridge = max(2, int(gap_minutes / 5))
+                bridge_index = pd.date_range(start=last_hist_ts, end=now_ts, periods=n_bridge + 1)[1:]
+                last_value = float(value_series.iloc[-1])
+                bridge_values = np.linspace(last_value, live_total, n_bridge + 1)[1:]
+                for ts, val in zip(bridge_index, bridge_values, strict=False):
+                    value_series.loc[ts] = float(val)
+            else:
+                value_series.loc[now_ts] = live_total
+
+        if _is_us_market_open(now) and gap_minutes > 60:
+            logger.warning(
+                "Stale historical bars during market hours: last_hist_ts=%s, gap_minutes=%.1f",
+                last_hist_ts,
+                gap_minutes,
+            )
+
+    value_series = value_series.sort_index()
 
     if value_series.isna().any():
         logger.warning("NaN values in timeseries for user %s, range %s", user_id, key)
