@@ -309,47 +309,33 @@ async def stock_history(ticker: str, limit: int = 120, db: AsyncSession = Depend
 
 
 @router.get("/{ticker}/candles")
-async def stock_candles(ticker: str, range: str = "1D", db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def stock_candles(ticker: str, range: str = "1D", db: AsyncSession = Depends(get_db)) -> dict:
     rows: list[dict] = []
     try:
-        payload = await state.market_data.get_bars(ticker, range, tf="1Day")
-        rows = payload.get("bars") or []
+        rows = await state.market_data.get_candles(ticker, range)
+        if rows:
+            return {"ticker": ticker.upper(), "range": range.upper(), "data": _normalize_candles(rows)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        fallback_limit = 390 if range.upper() == "1D" else 400
+        fallback_limit = 390 if range.upper() == "1D" else 500
         stored = await state.stock_service.get_price_history(db, ticker, limit=fallback_limit)
         if stored:
             rows = [
                 {
-                    "timestamp": (r.timestamp if isinstance(r.timestamp, datetime) else datetime.now(timezone.utc)).astimezone(
-                        timezone.utc
-                    ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                    "open": float(r.open_price or r.price),
-                    "high": float(r.high_price or r.price),
-                    "low": float(r.low_price or r.price),
-                    "close": float(r.price),
+                    "timestamp": r.timestamp if isinstance(r.timestamp, datetime) else datetime.utcnow(),
+                    "price": float(r.price),
+                    "open_price": float(r.open_price or r.price),
+                    "high_price": float(r.high_price or r.price),
+                    "low_price": float(r.low_price or r.price),
                     "volume": float(r.volume),
+                    "change_percent": float(r.change_percent or 0.0),
                 }
                 for r in stored
             ]
         else:
             raise HTTPException(status_code=503, detail=f"Live candles unavailable: {exc}") from exc
-    if not rows:
-        fallback_limit = 390 if range.upper() == "1D" else 400
-        stored = await state.stock_service.get_price_history(db, ticker, limit=fallback_limit)
-        rows = [
-            {
-                "timestamp": (r.timestamp if isinstance(r.timestamp, datetime) else datetime.now(timezone.utc)).astimezone(
-                    timezone.utc
-                ).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "open": float(r.open_price or r.price),
-                "high": float(r.high_price or r.price),
-                "low": float(r.low_price or r.price),
-                "close": float(r.price),
-                "volume": float(r.volume),
-            }
-            for r in stored
-        ]
-    return rows
+    return {"ticker": ticker.upper(), "range": range.upper(), "data": _normalize_candles(rows)}
 
 
 @router.get("/bars/{ticker}")
