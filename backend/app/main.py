@@ -28,8 +28,10 @@ from app.api.routes.signals import router as signals_router
 from app.api.routes.signal_context import router as signal_context_router
 from app.api.routes.account import router as account_router
 from app.api.routes.search import router as search_router
+from app.api.alerts import router as alerts_router
 from app.api.ws.prices import router as ws_prices_router
 from app.api.ws.news import router as ws_news_router
+from app.api.ws.alerts import router as ws_alerts_router
 from app.config import get_settings
 from app.db.database import Base, engine
 from app.db.database import SessionLocal
@@ -46,6 +48,7 @@ from app.workers.corporate_actions_worker import process_corporate_actions_forev
 from app.workers.crypto_stream import stream_crypto_forever
 from app.workers.news_poller import poll_news_forever
 from app.workers.signal_warmer import warm_signals_forever
+from app.workers.scheduler import create_scheduler
 
 
 settings = get_settings()
@@ -122,6 +125,8 @@ async def lifespan(app: FastAPI):
         )
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_watchlists_user_id ON watchlists (user_id)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_watchlists_symbol ON watchlists (symbol)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_alert_subscriptions_enabled_type ON alert_subscriptions (enabled, condition_type)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_alert_fires_user_fired_desc ON alert_fires (user_id, fired_at DESC)"))
 
     state.redis = Redis.from_url(settings.redis_url, decode_responses=True)
     state.market_data.bind_redis(state.redis)
@@ -181,6 +186,8 @@ async def lifespan(app: FastAPI):
     crypto_stream_task = asyncio.create_task(stream_crypto_forever())
     news_poller_task = asyncio.create_task(poll_news_forever())
     signal_warmer_task = asyncio.create_task(warm_signals_forever())
+    scheduler = create_scheduler()
+    scheduler.start()
     state.tasks.append(collector_task)
     if stream_task is not None:
         state.tasks.append(stream_task)
@@ -196,6 +203,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    scheduler.shutdown(wait=False)
     for task in state.tasks:
         task.cancel()
 
@@ -269,8 +277,10 @@ app.include_router(signals_router, prefix=settings.api_prefix)
 app.include_router(signal_context_router, prefix=settings.api_prefix)
 app.include_router(account_router, prefix=settings.api_prefix)
 app.include_router(search_router, prefix=settings.api_prefix)
+app.include_router(alerts_router, prefix=settings.api_prefix)
 app.include_router(ws_prices_router)
 app.include_router(ws_news_router)
+app.include_router(ws_alerts_router)
 
 
 @app.websocket("/ws/stocks/{ticker}")

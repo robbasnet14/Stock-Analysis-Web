@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ExternalLink, Info, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BaselineSeries, ColorType, createChart, LineStyle } from "lightweight-charts";
-import { getHoldingLots, getSignalDetail, saveHoldingLot } from "../services/api";
+import { createAlert, getHoldingLots, getSignalDetail, saveHoldingLot } from "../services/api";
 import { isAuthenticated } from "../services/auth";
 import { usePortfolioStore } from "../store/portfolio";
 import { SignalDetailResponse } from "../types";
+import { AlertChannel, AlertConditionType } from "../types";
 
 const HORIZONS = ["short", "mid", "long"] as const;
 const TRACKS = ["technical", "ensemble"] as const;
@@ -115,6 +116,18 @@ export default function SignalDetail() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertType, setAlertType] = useState<AlertConditionType>("price_above");
+  const [alertChannel, setAlertChannel] = useState<AlertChannel>("web");
+  const [alertTarget, setAlertTarget] = useState("");
+  const [alertEma, setAlertEma] = useState(200);
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [alertFlipTo, setAlertFlipTo] = useState<"bullish" | "bearish">("bullish");
+  const [alertImpact, setAlertImpact] = useState(8);
+  const [alertSentiment, setAlertSentiment] = useState<"any" | "bullish" | "bearish">("any");
+  const [alertDays, setAlertDays] = useState(5);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertSaving, setAlertSaving] = useState(false);
 
   const holdings = usePortfolioStore((s) => s.holdings);
   const setHoldings = usePortfolioStore((s) => s.setHoldings);
@@ -173,6 +186,41 @@ export default function SignalDetail() {
       setSaveMessage(err instanceof Error ? err.message : "Unable to add this ticker right now.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  function buildAlertParams(): Record<string, unknown> {
+    const price = detail?.quote.price ?? 0;
+    const target = Number(alertTarget || (alertType === "price_above" ? price * 1.05 : price * 0.95));
+    if (alertType === "price_above" || alertType === "price_below") return { target: Number(target.toFixed(2)) };
+    if (alertType === "ema_cross") return { ema: alertEma, direction: alertDirection };
+    if (alertType === "signal_flip") return { horizon, to: alertFlipTo };
+    if (alertType === "news_impact") return { min_impact: alertImpact, sentiment: alertSentiment };
+    return { days_before: alertDays };
+  }
+
+  async function handleCreateAlert() {
+    if (!detail || alertSaving) return;
+    if (!isAuthenticated()) {
+      setAlertMessage("Sign in to create alerts.");
+      return;
+    }
+    setAlertSaving(true);
+    setAlertMessage("");
+    try {
+      await createAlert({
+        ticker: detail.ticker,
+        condition_type: alertType,
+        condition_params: buildAlertParams(),
+        channel: alertChannel,
+        enabled: true
+      });
+      setAlertMessage("Alert saved.");
+      window.setTimeout(() => setAlertOpen(false), 700);
+    } catch (err) {
+      setAlertMessage(err instanceof Error ? err.message : "Unable to save alert.");
+    } finally {
+      setAlertSaving(false);
     }
   }
 
@@ -258,6 +306,13 @@ export default function SignalDetail() {
               </button>
             )}
             {saveMessage ? <p className="text-xs text-slate-400">{saveMessage}</p> : null}
+            <button
+              type="button"
+              onClick={() => setAlertOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-400/40 px-4 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-300 hover:text-white"
+            >
+              Set Alert
+            </button>
 
             <div className="flex flex-wrap gap-2">
               {HORIZONS.map((value) => (
@@ -527,6 +582,115 @@ export default function SignalDetail() {
       <footer className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 text-xs text-slate-500">
         Analysis based on technical indicators and historical patterns. Not financial advice. Past performance does not guarantee future results. Backtest period: {detail.projection.backtest_start ?? "N/A"} to {detail.projection.backtest_end ?? "N/A"}.
       </footer>
+
+      {alertOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Set Alert</h2>
+                <p className="text-sm text-slate-400">{detail.ticker} alert rules and delivery channel.</p>
+              </div>
+              <button type="button" onClick={() => setAlertOpen(false)} className="rounded-md border border-slate-700 px-2 py-1 text-sm text-slate-300">
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <label className="block text-sm text-slate-300">
+                Condition
+                <select value={alertType} onChange={(event) => setAlertType(event.target.value as AlertConditionType)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                  <option value="price_above">Price above</option>
+                  <option value="price_below">Price below</option>
+                  <option value="ema_cross">EMA cross</option>
+                  <option value="signal_flip">Signal flip</option>
+                  <option value="news_impact">News impact</option>
+                  <option value="earnings_upcoming">Earnings upcoming</option>
+                </select>
+              </label>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-sm text-slate-300">
+                <p className="font-semibold text-white">Params</p>
+                {alertType === "price_above" || alertType === "price_below" ? (
+                  <label className="mt-2 block">
+                    Target price
+                    <input value={alertTarget} onChange={(event) => setAlertTarget(event.target.value)} placeholder={String(buildAlertParams().target ?? "")} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+                  </label>
+                ) : null}
+                {alertType === "ema_cross" ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label>
+                      EMA
+                      <select value={alertEma} onChange={(event) => setAlertEma(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                        {[20, 50, 100, 200].map((value) => <option key={value} value={value}>{value}</option>)}
+                      </select>
+                    </label>
+                    <label>
+                      Direction
+                      <select value={alertDirection} onChange={(event) => setAlertDirection(event.target.value as "above" | "below")} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                        <option value="above">Above</option>
+                        <option value="below">Below</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                {alertType === "signal_flip" ? (
+                  <label className="mt-2 block">
+                    Flip to
+                    <select value={alertFlipTo} onChange={(event) => setAlertFlipTo(event.target.value as "bullish" | "bearish")} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                      <option value="bullish">Bullish</option>
+                      <option value="bearish">Bearish</option>
+                    </select>
+                  </label>
+                ) : null}
+                {alertType === "news_impact" ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <label>
+                      Min impact
+                      <input type="number" min={1} max={10} value={alertImpact} onChange={(event) => setAlertImpact(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+                    </label>
+                    <label>
+                      Sentiment
+                      <select value={alertSentiment} onChange={(event) => setAlertSentiment(event.target.value as "any" | "bullish" | "bearish")} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+                        <option value="any">Any</option>
+                        <option value="bullish">Bullish</option>
+                        <option value="bearish">Bearish</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : null}
+                {alertType === "earnings_upcoming" ? (
+                  <label className="mt-2 block">
+                    Days before
+                    <input type="number" min={1} max={30} value={alertDays} onChange={(event) => setAlertDays(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
+                  </label>
+                ) : null}
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-semibold text-slate-300">Channel</p>
+                <div className="flex flex-wrap gap-2">
+                  {(["web", "email", "telegram"] as const).map((channel) => (
+                    <button
+                      key={channel}
+                      type="button"
+                      onClick={() => setAlertChannel(channel)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-semibold ${alertChannel === channel ? "bg-cyan-400 text-slate-950" : "bg-slate-800 text-slate-300"}`}
+                    >
+                      {channel === "web" ? "Web push" : channel === "email" ? "Email" : "Telegram"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {alertMessage ? <p className="text-sm text-cyan-200">{alertMessage}</p> : null}
+              <button type="button" onClick={() => void handleCreateAlert()} disabled={alertSaving} className="w-full rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-60">
+                {alertSaving ? "Saving..." : "Save alert"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

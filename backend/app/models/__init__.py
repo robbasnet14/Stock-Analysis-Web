@@ -16,6 +16,7 @@ from app.models.corporate_action import StockSplit, DividendEvent, UserDividendC
 from app.models.technical_indicator import TechnicalIndicator
 from app.models.symbol_fundamental import SymbolFundamental
 from app.models.backtest_run import BacktestRun
+from app.models.alert import AlertSubscription, AlertFire
 
 __all__ = [
     "StockPrice",
@@ -41,4 +42,6 @@ __all__ = [
     "TechnicalIndicator",
     "SymbolFundamental",
     "BacktestRun",
+    "AlertSubscription",
+    "AlertFire",
 ]

@@ -263,6 +263,7 @@ async def stream_market_forever() -> None:
 
                             if state.redis is not None:
                                 await state.redis.set(f"price:{sym}", str(price), ex=120)
+                                await state.redis.hset("price:latest", sym, str(price))
                                 await state.redis.set(f"latest:{sym}", json.dumps(payload, default=str), ex=120)
                                 await state.redis.publish(f"stream:{sym}", json.dumps(payload, default=str))
 

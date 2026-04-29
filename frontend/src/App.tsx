@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "./context/ThemeContext";
 import Navbar from "./components/Navbar";
+import AlertBell from "./components/AlertBell";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const News = lazy(() => import("./pages/News"));
@@ -19,12 +20,15 @@ export default function App() {
       <div className="mx-auto max-w-7xl space-y-4">
         <header className="flex items-center justify-between rounded-xl border border-slate-300 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-slate-700 dark:bg-slate-900/70">
           <Navbar />
-          <button
-            onClick={toggleTheme}
-            className="rounded-md border border-slate-300 bg-slate-100 p-2 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          <div className="flex items-center gap-2">
+            <AlertBell />
+            <button
+              onClick={toggleTheme}
+              className="rounded-md border border-slate-300 bg-slate-100 p-2 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
         </header>
 
         <Suspense fallback={<div className="rounded-xl border border-slate-700/60 bg-slate-900/70 p-6 text-sm text-slate-300">Loading page...</div>}>

@@ -1,4 +1,5 @@
 import { StockTick } from "../types";
+import { getAccessToken } from "./auth";
 
 const wsBase = (import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:8000").replace(/\/$/, "");
 
@@ -39,5 +40,21 @@ export function createOrderSocket(accessToken: string, onUpdate: (payload: { typ
     }
   };
 
+  return ws;
+}
+
+export function createAlertSocket(onUpdate: (payload: any) => void): WebSocket | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  const wsBase = (import.meta.env.VITE_WS_BASE_URL ?? "ws://localhost:8000").replace(/\/+$/, "");
+  const url = `${wsBase}/ws/alerts?token=${encodeURIComponent(token)}`;
+  const ws = new WebSocket(url);
+  ws.onmessage = (event) => {
+    try {
+      onUpdate(JSON.parse(event.data));
+    } catch {
+      onUpdate({ type: "alert_fired", message: event.data });
+    }
+  };
   return ws;
 }

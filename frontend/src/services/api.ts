@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { clearTokens, getAccessToken, getRefreshToken, isAuthenticated, setTokens } from "./auth";
-import { AdminUser, BrokerAccountSummary, BullCaseItem, CacheHealthResponse, LiveDataStatus, MarketPulse, MarketSessionStatus, NewsArticle, PaperOrder, Position, Prediction, PricePoint, ProviderStatusResponse, SignalDetailResponse, StockTick, TrendingItem, UserProfile, WatchlistIntelItem } from "../types";
+import { AdminUser, AlertChannel, AlertConditionType, AlertFire, AlertSubscription, BrokerAccountSummary, BullCaseItem, CacheHealthResponse, LiveDataStatus, MarketPulse, MarketSessionStatus, NewsArticle, PaperOrder, Position, Prediction, PricePoint, ProviderStatusResponse, SignalDetailResponse, StockTick, TrendingItem, UserProfile, WatchlistIntelItem } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
@@ -581,4 +581,36 @@ export async function listAdminUsers(): Promise<AdminUser[]> {
 
 export async function setAdminUserRole(userId: number, role: "admin" | "trader" | "viewer"): Promise<void> {
   await api.post(`/api/account/users/${userId}/role?role=${encodeURIComponent(role)}`);
+}
+
+export async function listAlerts(): Promise<AlertSubscription[]> {
+  if (!isAuthenticated()) return [];
+  const { data } = await api.get<{ alerts: AlertSubscription[] }>("/api/alerts");
+  return data.alerts;
+}
+
+export async function createAlert(payload: {
+  ticker: string;
+  condition_type: AlertConditionType;
+  condition_params: Record<string, unknown>;
+  channel: AlertChannel;
+  enabled?: boolean;
+}): Promise<AlertSubscription> {
+  const { data } = await api.post<AlertSubscription>("/api/alerts", payload);
+  return data;
+}
+
+export async function updateAlert(id: number, payload: { condition_params?: Record<string, unknown>; channel?: AlertChannel; enabled?: boolean }): Promise<AlertSubscription> {
+  const { data } = await api.patch<AlertSubscription>(`/api/alerts/${id}`, payload);
+  return data;
+}
+
+export async function deleteAlert(id: number): Promise<void> {
+  await api.delete(`/api/alerts/${id}`);
+}
+
+export async function listAlertHistory(limit = 50): Promise<AlertFire[]> {
+  if (!isAuthenticated()) return [];
+  const { data } = await api.get<{ items: AlertFire[] }>(`/api/alerts/history?limit=${limit}`);
+  return data.items;
 }

@@ -134,6 +134,34 @@ export interface AdminUser {
   created_at: string;
 }
 
+export type AlertConditionType = "price_above" | "price_below" | "ema_cross" | "signal_flip" | "news_impact" | "earnings_upcoming";
+export type AlertChannel = "web" | "email" | "telegram";
+
+export interface AlertSubscription {
+  id: number;
+  user_id: number;
+  ticker: string;
+  condition_type: AlertConditionType;
+  condition_params: Record<string, unknown>;
+  channel: AlertChannel;
+  enabled: boolean;
+  created_at: string;
+  last_fired_at: string | null;
+}
+
+export interface AlertFire {
+  id: number;
+  alert_id: number | null;
+  ticker: string;
+  condition_type: AlertConditionType | string;
+  condition_summary: string;
+  message: string;
+  payload: Record<string, unknown>;
+  channel: AlertChannel | string;
+  fired_at: string;
+  read_at: string | null;
+}
+
 export interface LiveDataStatus {
   live_data_only: boolean;
   finnhub_configured: boolean;
