@@ -302,7 +302,7 @@ export async function getHistory(ticker: string): Promise<PricePoint[]> {
   return sanitizePriceSeries(data.data);
 }
 
-export async function getCandles(ticker: string, range: "1D" | "1W" | "1M" | "1Y"): Promise<PricePoint[]> {
+export async function getCandles(ticker: string, range: "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL"): Promise<PricePoint[]> {
   const { data } = await api.get<{ ticker: string; range: string; data: PricePoint[] }>(`/api/stocks/${ticker}/candles?range=${range}`);
   return sanitizePriceSeries(data.data);
 }
@@ -425,7 +425,7 @@ export async function getHoldingLots(): Promise<Position[]> {
   }
 }
 
-export async function getPortfolioValueHistory(range: "1D" | "1W" | "1M" | "1Y"): Promise<PricePoint[]> {
+export async function getPortfolioValueHistory(range: "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL"): Promise<PricePoint[]> {
   if (!isAuthenticated()) {
     return [];
   }
@@ -441,7 +441,33 @@ export async function getPortfolioValueHistory(range: "1D" | "1W" | "1M" | "1Y")
   }
 }
 
-export async function getPortfolioHistory(range: "1D" | "1W" | "1M" | "1Y"): Promise<PricePoint[]> {
+export async function getPortfolioTimeseries(range: "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL"): Promise<PricePoint[]> {
+  if (!isAuthenticated()) {
+    return [];
+  }
+
+  try {
+    const { data } = await api.get<Array<{ time: number; value: number }>>(`/api/portfolio/timeseries?range=${range}`);
+    return sanitizePriceSeries(
+      data.map((point) => ({
+        timestamp: new Date(Number(point.time) * 1000).toISOString(),
+        price: Number(point.value),
+        volume: 0,
+        change_percent: 0,
+        open_price: Number(point.value),
+        high_price: Number(point.value),
+        low_price: Number(point.value)
+      }))
+    );
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      return [];
+    }
+    return [];
+  }
+}
+
+export async function getPortfolioHistory(range: "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL"): Promise<PricePoint[]> {
   if (!isAuthenticated()) {
     return [];
   }

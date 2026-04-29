@@ -1,14 +1,11 @@
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from typing import Literal
-import numpy as np
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from lttb import downsample
 from app.config import get_settings
 from app.db.database import get_db
 from app.dependencies import get_current_user, require_roles
@@ -18,21 +15,12 @@ from app.models.portfolio_snapshot import PortfolioSnapshot
 from app.models.corporate_action import DividendEvent, StockSplit, UserDividendCredit
 from app.models.user import User
 from app.schemas.portfolio import OrderIn, PositionIn, PositionOut
+from app.services.portfolio import RANGE_CONFIG, compute_portfolio_timeseries
 from app.state import state
 
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 settings = get_settings()
-
-RANGE_TO_BARS = {
-    "1D": {"tf": "1Min", "max_points": 500},
-    "1W": {"tf": "5Min", "max_points": 500},
-    "1M": {"tf": "1Hour", "max_points": 500},
-    "3M": {"tf": "1Hour", "max_points": 500},
-    "1Y": {"tf": "1Day", "max_points": 500},
-    "ALL": {"tf": "1Day", "max_points": 500},
-}
-
 
 class HoldingLotIn(BaseModel):
     ticker: str
@@ -247,63 +235,29 @@ async def portfolio_value_history(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    stmt = select(PortfolioPosition).where(PortfolioPosition.user_id == user.id).order_by(PortfolioPosition.ticker.asc())
-    positions = list((await db.execute(stmt)).scalars().all())
-    if not positions:
-        return {"range": range.upper(), "data": []}
-
-    series_map: dict[str, list[dict]] = {}
-    timestamps: set[datetime] = set()
-    for pos in positions:
-        try:
-            candles = await state.market_data.get_candles(pos.ticker, range)
-        except Exception:
-            continue
-        if not candles:
-            continue
-        normalized: list[dict] = []
-        for c in candles:
-            ts = c.get("timestamp")
-            if isinstance(ts, str):
-                ts = datetime.fromisoformat(ts)
-            if not isinstance(ts, datetime):
-                continue
-            normalized.append({"timestamp": ts, "price": float(c.get("price", 0.0))})
-            timestamps.add(ts)
-        if normalized:
-            series_map[pos.ticker] = normalized
-
-    if not series_map or not timestamps:
-        return {"range": range.upper(), "data": []}
-
-    ordered_ts = sorted(timestamps)
-    pointers: dict[str, int] = {ticker: 0 for ticker in series_map}
-    out: list[dict] = []
-    for ts in ordered_ts:
-        total = 0.0
-        for pos in positions:
-            candles = series_map.get(pos.ticker)
-            if not candles:
-                continue
-            idx = pointers[pos.ticker]
-            while idx + 1 < len(candles) and candles[idx + 1]["timestamp"] <= ts:
-                idx += 1
-            pointers[pos.ticker] = idx
-            px = float(candles[idx]["price"])
-            total += px * pos.quantity
-
-        out.append(
-            {
-                "price": round(total, 4),
-                "volume": 0.0,
-                "change_percent": 0.0,
-                "open_price": round(total, 4),
-                "high_price": round(total, 4),
-                "low_price": round(total, 4),
-                "timestamp": ts,
-            }
-        )
-    return {"range": range.upper(), "data": out}
+    range_key = (range or "1D").upper()
+    if range_key not in RANGE_CONFIG:
+        raise HTTPException(status_code=400, detail="range must be one of 1D, 1W, 1M, 3M, 1Y, ALL")
+    points = await compute_portfolio_timeseries(
+        db=db,
+        market_data=state.market_data,
+        redis_client=state.redis,
+        user_id=int(user.id),
+        range_key=range_key,
+    )
+    data = [
+        {
+            "price": round(float(point["value"]), 4),
+            "volume": 0.0,
+            "change_percent": 0.0,
+            "open_price": round(float(point["value"]), 4),
+            "high_price": round(float(point["value"]), 4),
+            "low_price": round(float(point["value"]), 4),
+            "timestamp": datetime.fromtimestamp(int(point["time"]), tz=timezone.utc),
+        }
+        for point in points
+    ]
+    return {"range": range_key, "data": data}
 
 
 @router.get("/timeseries")
@@ -313,58 +267,15 @@ async def portfolio_timeseries(
     user: User = Depends(get_current_user),
 ):
     range_key = (range or "1D").upper()
-    if range_key not in RANGE_TO_BARS:
+    if range_key not in RANGE_CONFIG:
         raise HTTPException(status_code=400, detail="range must be one of 1D,1W,1M,3M,1Y,ALL")
-
-    lots_stmt = select(HoldingsLot).where(HoldingsLot.user_id == user.id, HoldingsLot.status == "open")
-    lots = list((await db.execute(lots_stmt)).scalars().all())
-    if not lots:
-        return []
-
-    qty_by_ticker: dict[str, float] = {}
-    for lot in lots:
-        t = str(lot.ticker or "").upper()
-        if not t:
-            continue
-        qty_by_ticker[t] = qty_by_ticker.get(t, 0.0) + float(lot.remaining_shares or lot.shares or 0.0)
-    if not qty_by_ticker:
-        return []
-
-    frames: list[pd.Series] = []
-    tf = RANGE_TO_BARS[range_key]["tf"]
-    for ticker, qty in qty_by_ticker.items():
-        if qty <= 0:
-            continue
-        try:
-            payload = await state.market_data.get_bars(ticker, range_key, tf=tf)
-            bars = payload.get("bars") or []
-        except Exception:
-            bars = []
-        if not bars:
-            continue
-        ts = pd.to_datetime([b.get("timestamp") for b in bars], utc=True, errors="coerce")
-        close = pd.to_numeric([b.get("close") for b in bars], errors="coerce")
-        close_arr = np.asarray(close, dtype=float)
-        s = pd.Series(close_arr * qty, index=ts).dropna()
-        s = s[~s.index.duplicated(keep="last")]
-        frames.append(s)
-
-    if not frames:
-        return []
-
-    matrix = pd.concat(frames, axis=1).sort_index().ffill().fillna(0.0)
-    total = matrix.sum(axis=1)
-    out = [
-        {"time": int(ts.timestamp()), "value": float(v)}
-        for ts, v in total.items()
-        if pd.notna(ts) and np.isfinite(v)
-    ]
-    max_points = int(RANGE_TO_BARS[range_key]["max_points"])
-    if len(out) > max_points:
-        arr = np.array([[p["time"], p["value"]] for p in out], dtype=float)
-        ds = downsample(arr, n_out=max_points)
-        out = [{"time": int(x), "value": float(y)} for x, y in ds]
-    return out
+    return await compute_portfolio_timeseries(
+        db=db,
+        market_data=state.market_data,
+        redis_client=state.redis,
+        user_id=int(user.id),
+        range_key=range_key,
+    )
 
 
 @router.get("/history")
@@ -380,10 +291,14 @@ async def portfolio_snapshot_history(
         cutoff = datetime.utcnow() - timedelta(days=7)
     elif r == "1M":
         cutoff = datetime.utcnow() - timedelta(days=31)
+    elif r == "3M":
+        cutoff = datetime.utcnow() - timedelta(days=93)
     elif r == "1Y":
         cutoff = datetime.utcnow() - timedelta(days=366)
+    elif r == "ALL":
+        cutoff = datetime.utcnow() - timedelta(days=3650)
     else:
-        raise HTTPException(status_code=400, detail="range must be one of 1D, 1W, 1M, 1Y")
+        raise HTTPException(status_code=400, detail="range must be one of 1D, 1W, 1M, 3M, 1Y, ALL")
 
     stmt = (
         select(PortfolioSnapshot)

@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCandles, getPortfolioHistory, getPortfolioValueHistory } from "../services/api";
+import { getCandles, getPortfolioTimeseries } from "../services/api";
 import { isAuthenticated } from "../services/auth";
 import { Position, PricePoint } from "../types";
 import { LatestPrice } from "../store/portfolio";
 
 export type ChartRange = "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL";
-
-function toBackendRange(range: ChartRange): "1D" | "1W" | "1M" | "1Y" {
-  if (range === "3M") return "1M";
-  if (range === "ALL") return "1Y";
-  return range;
-}
 
 type UsePortfolioSeriesArgs = {
   range: ChartRange;
@@ -25,24 +19,19 @@ export function usePortfolioSeries({ range, ticker, holdings, latestPrices }: Us
 
   useEffect(() => {
     let mounted = true;
-    const backendRange = toBackendRange(range);
 
     const load = async () => {
       setLoading(true);
       try {
         if (isAuthenticated() && holdings.length > 0) {
-          const [snapshots, fallback] = await Promise.all([
-            getPortfolioHistory(backendRange),
-            getPortfolioValueHistory(backendRange)
-          ]);
-          const rows = snapshots.length ? snapshots : fallback;
+          const rows = await getPortfolioTimeseries(range);
           if (mounted && rows.length) {
             setSeries(rows);
             return;
           }
         }
 
-        const stockRows = await getCandles(ticker, backendRange);
+        const stockRows = await getCandles(ticker, range);
         if (mounted) {
           setSeries(stockRows);
         }
@@ -70,6 +59,10 @@ export function usePortfolioSeries({ range, ticker, holdings, latestPrices }: Us
     const cloned = [...series];
     const last = cloned[cloned.length - 1];
     if (liveValue > 0 && last) {
+      const ratio = last.price > 0 ? liveValue / last.price : 1;
+      if (ratio < 0.5 || ratio > 2) {
+        return cloned;
+      }
       cloned[cloned.length - 1] = {
         ...last,
         price: liveValue,
