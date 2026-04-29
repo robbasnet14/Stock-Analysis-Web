@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,6 +13,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/stockdb"
     redis_url: str = "redis://localhost:6379/0"
+    vercel_url: str = ""
+    log_level: str = "DEBUG"
 
     finnhub_api_key: str = ""
     alpha_vantage_api_key: str = ""
@@ -81,6 +84,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _coerce_legacy_provider_vars(self) -> "Settings":
+        if self.database_url.startswith("postgres://"):
+            self.database_url = self.database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif self.database_url.startswith("postgresql://") and "+asyncpg" not in self.database_url:
+            self.database_url = self.database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
         if not self.alpaca_api_key and self.alpaca_api_key_id:
             self.alpaca_api_key = self.alpaca_api_key_id
         if not self.alpaca_secret_key and self.alpaca_api_secret_key:
@@ -89,11 +97,23 @@ class Settings(BaseSettings):
             self.alpaca_data_url = self.alpaca_data_base
         if not self.alpaca_data_base and self.alpaca_data_url:
             self.alpaca_data_base = self.alpaca_data_url
+        if self.env.lower() == "production" and self.log_level == "DEBUG":
+            self.log_level = "INFO"
         return self
 
     @property
     def ticker_list(self) -> list[str]:
         return [t.strip().upper() for t in self.default_tickers.split(",") if t.strip()]
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = {self.frontend_origin, "http://localhost:5173", "http://frontend:80"}
+        if self.vercel_url:
+            raw = self.vercel_url.strip()
+            parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+            if parsed.netloc:
+                origins.add(f"https://{parsed.netloc}")
+        return sorted(origin for origin in origins if origin)
 
 
 @lru_cache(maxsize=1)

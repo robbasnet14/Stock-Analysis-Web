@@ -165,6 +165,34 @@ cp .env.example .env
 npm run dev
 ```
 
+## Deployment
+
+### Backend (Railway)
+
+1. railway.com/new -> Deploy from GitHub -> select this repo
+2. Add Postgres plugin: New -> Database -> PostgreSQL
+3. Add Redis plugin: New -> Database -> Redis
+4. In service Variables, paste API keys (`ALPACA_API_KEY`, `ALPACA_SECRET_KEY`, `TIINGO_API_KEY`, `FINNHUB_API_KEY`, `OPENAI_API_KEY`, `POLYGON_API_KEY`, `JWT_SECRET`)
+5. Railway uses `railway.json` and `backend/Dockerfile` to deploy
+6. Copy the public URL, for example `stockweb-production.up.railway.app`
+
+### Frontend (Vercel)
+
+1. vercel.com/new -> Import this repo
+2. Root directory: `frontend`
+3. Framework: Vite (auto-detected)
+4. Environment variables:
+   - `VITE_API_BASE_URL=https://YOUR_RAILWAY_URL`
+   - `VITE_WS_BASE_URL=wss://YOUR_RAILWAY_URL`
+5. Deploy
+
+### Auto-deploy
+
+Both Railway and Vercel watch the `main` branch. Every git push to `main`:
+- Railway rebuilds and redeploys backend
+- Vercel rebuilds and redeploys frontend
+- No manual steps are needed after initial setup
+
 ## Core Features Implemented
 
 1. Real-time stock data ingestion + WebSocket stream

@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -47,10 +49,33 @@ from app.workers.signal_warmer import warm_signals_forever
 
 
 settings = get_settings()
+logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+logger = logging.getLogger(__name__)
+
+
+def _log_startup_context() -> None:
+    build_sha = os.getenv("RAILWAY_GIT_COMMIT_SHA", "local")
+    logger.info("startup: env=%s build_sha=%s log_level=%s", settings.env, build_sha, settings.log_level)
+    missing = [
+        name
+        for name, value in {
+            "FINNHUB_API_KEY": settings.finnhub_api_key,
+            "POLYGON_API_KEY": settings.polygon_api_key,
+            "TIINGO_API_KEY": settings.tiingo_api_key,
+            "ALPACA_API_KEY": settings.alpaca_api_key,
+            "ALPACA_SECRET_KEY": settings.alpaca_secret_key,
+            "OPENAI_API_KEY": settings.openai_api_key,
+            "JWT_SECRET": settings.jwt_secret if settings.jwt_secret != "change-me-in-prod" else "",
+        }.items()
+        if not value
+    ]
+    if missing:
+        logger.warning("startup: missing optional/required provider variables: %s", ", ".join(missing))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _log_startup_context()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Safe schema hardening for projects running without Alembic.
@@ -190,7 +215,7 @@ app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:5173", "http://frontend:80"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
