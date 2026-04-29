@@ -145,9 +145,13 @@ async def stream_market_forever() -> None:
 
                 async def refresh_symbol_baseline() -> None:
                     async with SessionLocal() as db:
+                        try:
+                            quotes = await state.market_data.get_quotes(sorted(subscribed))
+                        except Exception:
+                            quotes = {}
                         for sym in sorted(subscribed):
                             try:
-                                q = await state.market_data.get_quote(sym)
+                                q = quotes.get(sym) or await state.market_data.get_quote(sym)
                                 symbol_state[sym] = {
                                     "open": float(q.get("open_price", q.get("price", 0.0))),
                                     "high": float(q.get("high_price", q.get("price", 0.0))),

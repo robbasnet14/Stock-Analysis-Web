@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 import httpx
@@ -9,6 +11,7 @@ from app.providers.base import MarketDataProvider
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class AlpacaProvider(MarketDataProvider):
@@ -16,6 +19,10 @@ class AlpacaProvider(MarketDataProvider):
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
+        self.redis = None
+
+    def bind_redis(self, redis: Any) -> None:
+        self.redis = redis
 
     @staticmethod
     def _headers() -> dict[str, str]:
@@ -28,17 +35,30 @@ class AlpacaProvider(MarketDataProvider):
     def configured() -> bool:
         return bool(settings.alpaca_api_key and settings.alpaca_secret_key)
 
-    async def quote(self, symbol: str) -> dict[str, Any] | None:
-        if not self.configured():
+    @staticmethod
+    def _log_rate_limit(resp: httpx.Response) -> None:
+        try:
+            remaining = int(resp.headers.get("X-Ratelimit-Remaining", "200"))
+        except ValueError:
+            return
+        if remaining < 10:
+            logger.error("Alpaca rate limit critical: %s/200 remaining", remaining)
+        elif remaining < 50:
+            logger.warning("Alpaca rate limit low: %s/200 remaining", remaining)
+
+    @staticmethod
+    def _deserialize_quote(raw: str) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(raw)
+            ts = payload.get("timestamp")
+            if isinstance(ts, str):
+                payload["timestamp"] = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            return payload
+        except Exception:
             return None
-        sym = symbol.upper()
-        resp = await self.client.get(
-            f"{settings.alpaca_data_url.rstrip('/')}/v2/stocks/{sym}/snapshot",
-            params={"feed": settings.alpaca_data_feed or "iex"},
-            headers=self._headers(),
-        )
-        resp.raise_for_status()
-        payload = resp.json() or {}
+
+    @staticmethod
+    def _snapshot_to_quote(sym: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         latest_trade = payload.get("latestTrade") or {}
         latest_quote = payload.get("latestQuote") or {}
         minute_bar = payload.get("minuteBar") or {}
@@ -80,6 +100,38 @@ class AlpacaProvider(MarketDataProvider):
             "source": "alpaca",
         }
 
+    async def _get_cached_quote(self, sym: str) -> dict[str, Any] | None:
+        if self.redis is None:
+            return None
+        cached = await self.redis.get(f"alpaca:snapshot:{sym}")
+        return self._deserialize_quote(cached) if cached else None
+
+    async def _set_cached_quote(self, sym: str, result: dict[str, Any]) -> None:
+        if self.redis is None:
+            return
+        await self.redis.setex(f"alpaca:snapshot:{sym}", 10, json.dumps(result, default=str))
+
+    async def quote(self, symbol: str) -> dict[str, Any] | None:
+        if not self.configured():
+            return None
+        sym = symbol.upper()
+        cached = await self._get_cached_quote(sym)
+        if cached:
+            return cached
+
+        resp = await self.client.get(
+            f"{settings.alpaca_data_url.rstrip('/')}/v2/stocks/{sym}/snapshot",
+            params={"feed": settings.alpaca_data_feed or "iex"},
+            headers=self._headers(),
+        )
+        self._log_rate_limit(resp)
+        resp.raise_for_status()
+        result = self._snapshot_to_quote(sym, resp.json() or {})
+        if result is None:
+            return None
+        await self._set_cached_quote(sym, result)
+        return result
+
     async def candles(self, symbol: str, start: datetime, end: datetime, timeframe: str) -> list[dict[str, Any]]:
         if not self.configured():
             return []
@@ -105,6 +157,7 @@ class AlpacaProvider(MarketDataProvider):
             if next_page_token:
                 call_params["page_token"] = next_page_token
             resp = await self.client.get(url, params=call_params, headers=self._headers())
+            self._log_rate_limit(resp)
             resp.raise_for_status()
             payload = resp.json() or {}
             bars.extend(payload.get("bars") or [])
@@ -131,13 +184,36 @@ class AlpacaProvider(MarketDataProvider):
             )
         return out
 
-    async def snapshots(self, symbols: list[str]) -> dict[str, Any]:
+    async def snapshots_batch(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         if not self.configured() or not symbols:
             return {}
+        normalized = list(dict.fromkeys(s.upper().strip() for s in symbols if s.strip()))[:100]
+        out: dict[str, dict[str, Any]] = {}
+        missing: list[str] = []
+        for sym in normalized:
+            cached = await self._get_cached_quote(sym)
+            if cached:
+                out[sym] = cached
+            else:
+                missing.append(sym)
+        if not missing:
+            return out
+
         resp = await self.client.get(
             f"{settings.alpaca_data_url.rstrip('/')}/v2/stocks/snapshots",
-            params={"symbols": ",".join(s.upper() for s in symbols[:100]), "feed": settings.alpaca_data_feed or "iex"},
+            params={"symbols": ",".join(missing), "feed": settings.alpaca_data_feed or "iex"},
             headers=self._headers(),
         )
+        self._log_rate_limit(resp)
         resp.raise_for_status()
-        return resp.json() or {}
+        raw = resp.json() or {}
+        for sym, snapshot in raw.items():
+            result = self._snapshot_to_quote(str(sym).upper(), snapshot or {})
+            if result is None:
+                continue
+            out[str(sym).upper()] = result
+            await self._set_cached_quote(str(sym).upper(), result)
+        return out
+
+    async def snapshots(self, symbols: list[str]) -> dict[str, Any]:
+        return await self.snapshots_batch(symbols)

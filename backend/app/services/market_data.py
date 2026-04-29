@@ -96,6 +96,7 @@ class MarketDataService:
 
     def bind_redis(self, redis: Any) -> None:
         self.limiter = RedisTokenBucketLimiter(redis)
+        self.alpaca.bind_redis(redis)
 
     async def _allow(self, provider: str, op: str) -> bool:
         prefix = self.settings.rate_limit_redis_prefix or "ratelimit:"
@@ -166,6 +167,31 @@ class MarketDataService:
                 self.router.record_failure(provider.name, str(exc), cooldown_s=cooldown)
                 errors.append(f"{name}: {exc}")
         raise RuntimeError(f"no quote for {symbol}: {' | '.join(errors) or 'no providers'}")
+
+    async def get_quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        normalized = list(dict.fromkeys((s or "").upper().strip() for s in symbols if (s or "").strip()))
+        if not normalized:
+            return {}
+        out: dict[str, dict[str, Any]] = {}
+        equity_symbols = [s for s in normalized if not self._is_crypto_symbol(s)]
+        if equity_symbols and self.alpaca.configured() and self.router.can_try(self.alpaca.name):
+            if await self._allow(self.alpaca.name, "quote"):
+                try:
+                    out.update(await self.alpaca.snapshots_batch(equity_symbols))
+                    self.router.record_success(self.alpaca.name)
+                except Exception as exc:
+                    self.router.record_failure(self.alpaca.name, str(exc), cooldown_s=30)
+            else:
+                self.router.record_failure(self.alpaca.name, "rate limit guard", cooldown_s=5, trip_breaker=False)
+
+        for symbol in normalized:
+            if symbol in out:
+                continue
+            try:
+                out[symbol] = await self.get_quote(symbol)
+            except Exception:
+                logger.exception("quote batch fallback failed: ticker=%s", symbol)
+        return out
 
     async def get_candles(self, symbol: str, span: str, tf: str | None = None) -> list[dict[str, Any]]:
         # Legacy compatibility: return simple [{price,...,timestamp}] rows.

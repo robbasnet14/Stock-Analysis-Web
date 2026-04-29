@@ -94,7 +94,7 @@ async def poll_news_forever() -> None:
             now_ts = asyncio.get_event_loop().time()
             async with SessionLocal() as db:
                 tickers = await _watchlist_tickers(db)
-                # Finnhub per ticker every 30s.
+                # Finnhub per ticker at the configured cadence.
                 for t in tickers:
                     try:
                         rows = await aggregator.fetch_finnhub(t)
@@ -181,8 +181,7 @@ async def poll_news_forever() -> None:
                         cleaned.append(r)
                     await _save_articles(db, state.redis, cleaned)
 
-            await asyncio.sleep(30)
+            await asyncio.sleep(settings.news_poll_interval_seconds)
     finally:
         await aggregator.close()
         await sentiment.close()
-

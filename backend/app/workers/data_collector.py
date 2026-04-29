@@ -16,11 +16,15 @@ async def collect_forever() -> None:
         tickers = sorted(state.watchlist) if state.watchlist else settings.ticker_list
 
         async with SessionLocal() as db:
+            try:
+                quote_payloads = await state.market_data.get_quotes(tickers)
+            except Exception:
+                quote_payloads = {}
             for ticker in tickers:
                 quote = await state.stock_service.get_latest_quote(db, ticker)
                 if quote is None:
                     try:
-                        quote_payload = await state.market_data.get_quote(ticker)
+                        quote_payload = quote_payloads.get(ticker.upper()) or await state.market_data.get_quote(ticker)
                         quote_payload = {
                             "ticker": ticker.upper(),
                             "price": float(quote_payload.get("price") or 0.0),

@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     marketaux_api_key: str = ""
     alphavantage_news_enabled: bool = True
     news_rss_sources: str = "yahoo,google_news"
-    news_poll_interval_seconds: int = 60
+    news_poll_interval_seconds: int = 120
+    news_ondemand_fetch_ttl: int = 60
 
     sentiment_primary: str = "gpt-4o-mini"
     sentiment_fallback: str = "vader"

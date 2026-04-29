@@ -1,12 +1,30 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.schemas.common import NewsItem
 from app.services.news.aggregator import NewsAggregator
+from app.config import get_settings
 from app.state import state
 
 
 router = APIRouter(prefix="/news", tags=["news"])
+settings = get_settings()
+
+
+async def _fetch_finnhub_on_demand(ticker: str) -> list[dict]:
+    symbol = ticker.upper()
+    cache_key = f"news:ondemand:{symbol}"
+    if state.redis is not None:
+        cached = await state.redis.get(cache_key)
+        if cached:
+            return []
+        await state.redis.setex(cache_key, settings.news_ondemand_fetch_ttl, "1")
+    agg = NewsAggregator()
+    try:
+        return await agg.fetch_finnhub(symbol)
+    finally:
+        await agg.close()
 
 
 @router.get("/{ticker}")
@@ -15,11 +33,23 @@ async def get_news(ticker: str, db: AsyncSession = Depends(get_db)) -> dict:
 
     if not rows:
         try:
-            fetched = await state.news_service.fetch_news(ticker)
+            fetched = await _fetch_finnhub_on_demand(ticker)
+            if not fetched:
+                fetched = await state.news_service.fetch_news(ticker)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Live news unavailable: {exc}") from exc
         await state.news_service.save_articles(db, fetched)
         rows = await state.news_service.get_latest_news(db, ticker)
+    else:
+        try:
+            latest = max((r.published_at for r in rows if r.published_at), default=None)
+            if latest is None or (datetime.now(timezone.utc) - latest.replace(tzinfo=timezone.utc)).total_seconds() > settings.news_ondemand_fetch_ttl:
+                fetched = await _fetch_finnhub_on_demand(ticker)
+                if fetched:
+                    await state.news_service.save_articles(db, fetched)
+                    rows = await state.news_service.get_latest_news(db, ticker)
+        except Exception:
+            pass
 
     # Top-up path: if DB has too few rows for this ticker, pull RSS sources immediately.
     if len(rows) < 5:

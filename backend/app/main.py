@@ -54,6 +54,9 @@ from app.workers.scheduler import create_scheduler
 settings = get_settings()
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
+for noisy_logger in ["httpcore", "httpx", "websockets.client", "websockets.protocol", "asyncio"]:
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+logging.getLogger("app").setLevel(logging.INFO)
 
 
 def _log_startup_context() -> None:
