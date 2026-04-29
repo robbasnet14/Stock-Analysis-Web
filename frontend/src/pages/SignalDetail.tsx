@@ -425,6 +425,53 @@ export default function SignalDetail() {
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Context</h2>
+                <p className="text-sm text-slate-400">Market, sector, event, and theme filters.</p>
+              </div>
+              <span className="rounded-full border border-slate-700 px-2 py-1 text-xs font-semibold uppercase text-slate-300">
+                {detail.context?.regime ?? "unknown"}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 text-sm">
+              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
+                <span>Regime</span>
+                <span className="font-semibold text-white">
+                  SPY {detail.context?.regime_context?.spy_above_200ema ? "above" : "below"} 200-EMA · VIX {(detail.context?.regime_context?.vix ?? 0).toFixed(1)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
+                <span>Sector</span>
+                <span className={`font-semibold ${detail.context?.sector_position === "leading" ? "text-emerald-300" : detail.context?.sector_position === "lagging" ? "text-rose-300" : "text-slate-200"}`}>
+                  {detail.context?.sector ?? "unknown"} · {detail.context?.sector_position ?? "neutral"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
+                <span>Earnings</span>
+                <span className="font-semibold text-white">
+                  {detail.context?.next_earnings?.date ? `${detail.context.next_earnings.date}${detail.context.next_earnings.hour ? ` · ${detail.context.next_earnings.hour}` : ""}` : "No event in next 60 days"}
+                </span>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Themes</span>
+                  <span className="font-semibold text-white">
+                    {detail.context?.matched_themes?.length ? detail.context.matched_themes.map((t) => t.theme).join(", ") : "No hot theme match"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {detail.context?.extras?.length ? (
+              <div className="mt-4 space-y-2">
+                {detail.context.extras.map((item) => (
+                  <p key={item} className="rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">{item}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2 className="text-lg font-semibold text-white">News Context</h2>

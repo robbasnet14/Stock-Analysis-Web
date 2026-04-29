@@ -23,6 +23,7 @@ from app.api.providers import router as providers_router
 from app.api.strategy import router as strategy_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.signals import router as signals_router
+from app.api.routes.signal_context import router as signal_context_router
 from app.api.routes.account import router as account_router
 from app.api.routes.search import router as search_router
 from app.api.ws.prices import router as ws_prices_router
@@ -240,6 +241,7 @@ app.include_router(strategy_router, prefix=settings.api_prefix)
 app.include_router(broker_router, prefix=settings.api_prefix)
 app.include_router(dashboard_router, prefix=settings.api_prefix)
 app.include_router(signals_router, prefix=settings.api_prefix)
+app.include_router(signal_context_router, prefix=settings.api_prefix)
 app.include_router(account_router, prefix=settings.api_prefix)
 app.include_router(search_router, prefix=settings.api_prefix)
 app.include_router(ws_prices_router)

@@ -223,6 +223,24 @@ export interface SignalDetailResponse {
       url: string;
     }>;
   };
+  context?: {
+    regime: "risk_on" | "neutral" | "risk_off" | "transitional" | string;
+    regime_context?: {
+      spy_above_200ema?: boolean;
+      vix?: number;
+      signal_modifier?: number;
+    };
+    sector?: string | null;
+    sector_position: "leading" | "lagging" | "neutral" | string;
+    next_earnings?: {
+      date: string;
+      hour?: string | null;
+      epsEstimate?: number | null;
+      revenueEstimate?: number | null;
+    } | null;
+    matched_themes: Array<{ theme: string; sentiment: number }>;
+    extras: string[];
+  };
   levels: {
     current: number;
     support: number;

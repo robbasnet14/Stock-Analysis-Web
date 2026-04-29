@@ -13,6 +13,7 @@ import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.signals.horizons import params_for
+from app.services.signals.trend_rules import evaluate_trend_position
 
 try:
     import talib  # type: ignore
@@ -28,10 +29,21 @@ logger = logging.getLogger(__name__)
 class IndicatorVote:
     name: str
     value: float
-    vote: int
+    vote: float
     weight: float
     fired_rule: str
     explanation: str
+
+
+def _vote_from_rule(row: dict[str, Any]) -> IndicatorVote:
+    return IndicatorVote(
+        name=str(row.get("rule") or "trend_rule"),
+        value=float(row.get("value") or 0.0),
+        vote=float(row.get("vote") or 0.0),
+        weight=float(row.get("weight") or 0.0),
+        fired_rule=str(row.get("rule") or "trend_rule"),
+        explanation=str(row.get("explanation") or ""),
+    )
 
 
 INDICATOR_WEIGHTS: dict[str, float] = {
@@ -44,7 +56,7 @@ INDICATOR_WEIGHTS: dict[str, float] = {
     "adx_gate": 0.08,
 }
 
-TREND_SIGNALS = {"macd_cross", "ema_cross", "volume_confirmed_up"}
+TREND_SIGNALS = {"macd_cross", "ema_cross", "volume_confirmed_up", "long_term_regime", "golden_cross", "death_cross", "ema20_bounce"}
 
 HORIZON_MARKET_FETCH: dict[str, dict[str, Any]] = {
     "short": {"span": "1W", "tf": "5Min", "lookback_days": 3},
@@ -299,7 +311,7 @@ def _score(votes: list[IndicatorVote]) -> tuple[float, float]:
         else:
             raw += float(v.vote) * v.weight
     score = raw / total_w if total_w > 0 else 0.0
-    confidence = min(1.0, max(0.0, sum(v.weight for v in votes if v.vote != 0) / total_w if total_w else 0.0))
+    confidence = min(1.0, max(0.0, sum(v.weight for v in votes if float(v.vote) != 0) / total_w if total_w else 0.0))
     return float(score), float(confidence)
 
 
@@ -315,7 +327,7 @@ async def compute_technical(
     h = (horizon or "short").lower()
     if h not in HORIZON_MARKET_FETCH:
         h = "short"
-    cache_key = f"signals:{symbol}:{h}:technical"
+    cache_key = f"signals:{symbol}:{h}:technical:v2"
     lock_key = f"{cache_key}:lock"
     ttl = _cache_ttl(h)
 
@@ -367,6 +379,7 @@ async def compute_technical(
             "score": 0.0,
             "confidence": 0.0,
             "indicators": [],
+            "trend_rules": [],
             "triggered_rules": [],
             "explanation": f"Insufficient data: need at least {min_bars} bars, received {len(df)}.",
             "as_of": datetime.utcnow().isoformat(),
@@ -379,16 +392,18 @@ async def compute_technical(
 
     arr = _talib_or_fallback(df, h)
     votes = _vote_rows(arr)
+    trend_payload = evaluate_trend_position(df, h)
+    votes.extend(_vote_from_rule(row) for row in (trend_payload.get("rules") or []))
     score, confidence = _score(votes)
     indicators = [asdict(v) for v in votes]
     triggered_rules = [
-        f"{'+' if int(v['vote']) > 0 else '-'}{v['name']}"
+        f"{'+' if float(v['vote']) > 0 else '-'}{v['name']}"
         for v in indicators
-        if int(v["vote"]) != 0
+        if float(v["vote"]) != 0
     ]
     action = "bullish" if score > 0.2 else "bearish" if score < -0.2 else "neutral"
     indicator_debug = ", ".join(
-        f"{v['name']}={float(v['value']):.4f}:{int(v['vote'])}" for v in indicators
+        f"{v['name']}={float(v['value']):.4f}:{float(v['vote']):.2f}" for v in indicators
     )
     logger.debug(
         "signals technical compute: ticker=%s horizon=%s bar_count=%s min_bars=%s params=%s indicators=[%s]",
@@ -413,6 +428,7 @@ async def compute_technical(
         "score": round(score, 6),
         "confidence": round(confidence, 6),
         "indicators": indicators,
+        "trend_rules": trend_payload.get("rules") or [],
         "triggered_rules": triggered_rules,
         "explanation": explanation,
         "source": bars_payload.get("source", ""),

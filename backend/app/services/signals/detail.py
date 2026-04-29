@@ -55,7 +55,7 @@ def _technical_rules(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "value": round(float(row.get("value") or 0.0), 4),
                 "vote": vote,
                 "weight": weight,
-                "fired": bool(vote),
+                "fired": abs(vote) > 0,
                 "explanation": str(row.get("explanation") or row.get("fired_rule") or ""),
             }
         )
@@ -183,6 +183,15 @@ async def build_signal_detail(*, db: AsyncSession, ticker: str, horizon: str, ma
         redis_client=redis_client,
     )
     news = await _news_context(db, symbol)
+    context = {
+        "regime": ensemble.get("regime") or "unknown",
+        "regime_context": ensemble.get("regime_context") or {},
+        "sector": ensemble.get("sector"),
+        "sector_position": ensemble.get("sector_position") or "neutral",
+        "next_earnings": ensemble.get("next_earnings"),
+        "matched_themes": ensemble.get("matched_themes") or [],
+        "extras": ensemble.get("extras") or [],
+    }
 
     return {
         "ticker": symbol,
@@ -192,6 +201,7 @@ async def build_signal_detail(*, db: AsyncSession, ticker: str, horizon: str, ma
         "horizon": h,
         "verdict": top_level_verdict,
         "triggered_rules": _ensemble_rules(ensemble),
+        "context": context,
         "projection": projection,
         "news": news,
         "levels": levels,
