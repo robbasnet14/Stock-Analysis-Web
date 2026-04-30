@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
@@ -18,6 +19,7 @@ from app.services.auth_service import (
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 def _field_error(field: str, msg: str) -> dict:
@@ -49,15 +51,20 @@ async def register(payload: RegisterIn, db: AsyncSession = Depends(get_db)) -> T
             field = "email"
         raise HTTPException(status_code=400, detail=[_field_error(field, msg)]) from exc
 
-    user = await create_user(
-        db,
-        payload.email,
-        payload.password,
-        payload.first_name,
-        payload.last_name,
-        payload.date_of_birth,
-    )
-    token_pair = await issue_token_pair(db, user)
+    try:
+        user = await create_user(
+            db,
+            payload.email,
+            payload.password,
+            payload.first_name,
+            payload.last_name,
+            payload.date_of_birth,
+        )
+        token_pair = await issue_token_pair(db, user)
+    except Exception:
+        await db.rollback()
+        logger.exception("auth register failed for email=%s", payload.email)
+        raise
     return TokenOut(**token_pair)
 
 
