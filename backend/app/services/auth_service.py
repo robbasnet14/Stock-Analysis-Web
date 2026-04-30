@@ -94,6 +94,8 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 def validate_password_strength(password: str) -> None:
     if len(password) < 8:
         raise ValueError("Password must be at least 8 characters.")
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be 72 bytes or fewer.")
     if not re.search(r"[A-Z]", password):
         raise ValueError("Password must include at least one uppercase letter.")
     if not re.search(r"[a-z]", password):
