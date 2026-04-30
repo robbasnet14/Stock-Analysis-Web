@@ -74,6 +74,11 @@ class Settings(BaseSettings):
 
     default_tickers: str = "AAPL,MSFT,TSLA,NVDA,AMZN"
     market_stream_enabled: bool = True
+    background_workers_enabled: bool = True
+    scheduler_enabled: bool = True
+    crypto_stream_enabled: bool = True
+    news_poller_enabled: bool = True
+    signal_warmer_enabled: bool = True
     market_stream_provider: str = "auto"
     market_stream_throttle_seconds: float = 1.0
     symbol_sync_on_startup: bool = False

@@ -196,6 +196,20 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+    if not settings.background_workers_enabled:
+        logger.info("startup: background workers disabled")
+        yield
+        await state.stock_service.close()
+        await state.market_data.close()
+        await state.news_service.close()
+        await state.llm_service.close()
+        await state.sector_service.close()
+        await state.notifications.close()
+        await state.broker.close()
+        if state.redis is not None:
+            await state.redis.aclose()
+        return
+
     collector_task = asyncio.create_task(collect_forever())
     stream_task = None
     if settings.market_stream_enabled and (
@@ -207,11 +221,12 @@ async def lifespan(app: FastAPI):
     notification_task = asyncio.create_task(dispatch_notifications_forever())
     snapshot_task = asyncio.create_task(snapshot_portfolios_forever())
     corporate_actions_task = asyncio.create_task(process_corporate_actions_forever())
-    crypto_stream_task = asyncio.create_task(stream_crypto_forever())
-    news_poller_task = asyncio.create_task(poll_news_forever())
-    signal_warmer_task = asyncio.create_task(warm_signals_forever())
-    scheduler = create_scheduler()
-    scheduler.start()
+    crypto_stream_task = asyncio.create_task(stream_crypto_forever()) if settings.crypto_stream_enabled else None
+    news_poller_task = asyncio.create_task(poll_news_forever()) if settings.news_poller_enabled else None
+    signal_warmer_task = asyncio.create_task(warm_signals_forever()) if settings.signal_warmer_enabled else None
+    scheduler = create_scheduler() if settings.scheduler_enabled else None
+    if scheduler is not None:
+        scheduler.start()
     state.tasks.append(collector_task)
     if stream_task is not None:
         state.tasks.append(stream_task)
@@ -221,13 +236,17 @@ async def lifespan(app: FastAPI):
         state.tasks.append(order_sync_task)
     state.tasks.append(snapshot_task)
     state.tasks.append(corporate_actions_task)
-    state.tasks.append(crypto_stream_task)
-    state.tasks.append(news_poller_task)
-    state.tasks.append(signal_warmer_task)
+    if crypto_stream_task is not None:
+        state.tasks.append(crypto_stream_task)
+    if news_poller_task is not None:
+        state.tasks.append(news_poller_task)
+    if signal_warmer_task is not None:
+        state.tasks.append(signal_warmer_task)
 
     yield
 
-    scheduler.shutdown(wait=False)
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
     for task in state.tasks:
         task.cancel()
 
